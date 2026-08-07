@@ -313,7 +313,7 @@
     function renderClaimEnter() {
       view.innerHTML =
         '<div class="auth-card"><h1>Claim: '+esc(claim.name)+'</h1>'+
-        '<p class="sub">Enter the claim code you were given and your email. We’ll send a 6-digit verification code to your email.</p>'+
+        '<p class="sub">Enter the claim code you were given and your email. We’ll send a verification code to your email.</p>'+
         '<div class="steps"><span class="dot"></span><span class="dot on"></span><span class="dot"></span></div>'+
         '<div class="field"><label>Claim code</label><input id="e-code" type="text" placeholder="e.g. 7F3K9Q" autocomplete="off" style="text-transform:uppercase;letter-spacing:.15em;" /></div>'+
         '<div class="field"><label>Your email</label><input id="e-email" type="email" placeholder="you@email.com" autocomplete="email" /></div>'+
@@ -340,9 +340,9 @@
     function renderClaimVerify() {
       view.innerHTML =
         '<div class="auth-card"><h1>Enter your code</h1>'+
-        '<p class="sub">We emailed a 6-digit code to <b>'+esc(claim.email)+'</b>. Enter it below to finish claiming <b>'+esc(claim.name)+'</b>.</p>'+
+        '<p class="sub">We emailed a verification code to <b>'+esc(claim.email)+'</b>. Enter it below to finish claiming <b>'+esc(claim.name)+'</b>.</p>'+
         '<div class="steps"><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>'+
-        '<div class="field"><input id="v-otp" class="otp-input" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" /></div>'+
+        '<div class="field"><input id="v-otp" class="otp-input" inputmode="numeric" maxlength="10" placeholder="000000" autocomplete="one-time-code" /></div>'+
         '<div class="msg err" id="v-msg" style="margin:6px 0 12px;"></div>'+
         '<button class="btn primary" id="v-go">Verify & claim</button>'+
         '<div class="auth-toggle" style="text-align:center;margin-top:14px;"><button class="link" id="v-back">← Back</button></div></div>';
@@ -355,7 +355,7 @@
       const token = document.getElementById('v-otp').value.trim();
       const msg = document.getElementById('v-msg'), btn = document.getElementById('v-go');
       msg.className='msg err'; msg.textContent='';
-      if (token.length < 6) { msg.textContent='Enter the 6-digit code.'; return; }
+      if (token.length < 6) { msg.textContent='Enter the verification code.'; return; }
       btn.disabled = true; btn.textContent = 'Verifying…';
       const { error:vErr } = await sb.auth.verifyOtp({ email: claim.email, token, type: 'email' });
       if (vErr) { btn.disabled=false; btn.textContent='Verify & claim'; msg.textContent = vErr.message; return; }
@@ -376,8 +376,8 @@
       if (loginState.stage === 'otp') {
         view.innerHTML =
           '<div class="auth-card"><h1>Enter your code</h1>'+
-          '<p class="sub">We emailed a 6-digit code to <b>'+esc(loginState.email)+'</b>.</p>'+
-          '<div class="field"><input id="l-otp" class="otp-input" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" /></div>'+
+          '<p class="sub">We emailed a verification code to <b>'+esc(loginState.email)+'</b>.</p>'+
+          '<div class="field"><input id="l-otp" class="otp-input" inputmode="numeric" maxlength="10" placeholder="000000" autocomplete="one-time-code" /></div>'+
           '<div class="msg err" id="l-msg" style="margin:6px 0 12px;"></div>'+
           '<button class="btn primary" id="l-verify">Verify & sign in</button>'+
           '<div class="auth-toggle" style="text-align:center;margin-top:14px;"><button class="link" id="l-back">← Use a different email</button></div></div>';
@@ -389,7 +389,7 @@
       }
       view.innerHTML =
         '<div class="auth-card"><h1>Sign in</h1>'+
-        '<p class="sub">Enter your email and we’ll send a 6-digit code — no password needed.</p>'+
+        '<p class="sub">Enter your email and we’ll send a verification code — no password needed.</p>'+
         '<div class="field"><label>Email</label><input id="l-email" type="email" placeholder="you@email.com" autocomplete="email" /></div>'+
         '<div class="msg err" id="l-msg" style="margin-bottom:12px;"></div>'+
         '<button class="btn primary" id="l-send">Send code</button>'+
@@ -412,7 +412,7 @@
     async function verifyLogin() {
       const token = document.getElementById('l-otp').value.trim();
       const msg = document.getElementById('l-msg'), btn = document.getElementById('l-verify');
-      if (token.length<6) { msg.textContent='Enter the 6-digit code.'; return; }
+      if (token.length<6) { msg.textContent='Enter the verification code.'; return; }
       btn.disabled=true; btn.textContent='Verifying…';
       const { error } = await sb.auth.verifyOtp({ email: loginState.email, token, type:'email' });
       if (error) { btn.disabled=false; btn.textContent='Verify & sign in'; msg.textContent = error.message; return; }
