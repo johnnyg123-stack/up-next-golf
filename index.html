@@ -49,6 +49,12 @@
   .tag.you { color:var(--accent-ink); background:var(--accent); border-color:var(--accent); font-weight:700; }
   .tag.open { color:var(--gold); border-color:#4a4020; }
   .empty { color:var(--faint); text-align:center; padding:44px 16px; font-size:14px; }
+  .star { flex:none; background:none; border:none; cursor:pointer; font-size:20px; line-height:1; color:var(--faint); padding:4px 6px; transition:color .15s, transform .08s; }
+  .star:hover { color:var(--gold); }
+  .star.on { color:var(--gold); }
+  .star:active { transform:scale(1.25); }
+  .section-head { font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin:20px 2px 8px; }
+  .section-head:first-child { margin-top:2px; }
   .empty .btn { margin-top:14px; }
 
   .btn { font-size:14px; font-weight:500; border:1px solid var(--line); background:var(--bg-soft); color:var(--fg);
@@ -174,6 +180,7 @@
     let isAdmin = false;
     // claim flow state
     let claim = { stage:'search', profileId:null, name:'', code:'', email:'' };
+    let favSet = new Set();
 
     function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
@@ -223,6 +230,19 @@
       const list = document.getElementById('list');
       if (error) { list.innerHTML = errorBox(error); return; }
       const players = data || [];
+      favSet = new Set();
+      if (session) {
+        const { data: favs } = await sb.from('favorites').select('profile_id').eq('user_id', session.user.id);
+        (favs||[]).forEach(f => favSet.add(f.profile_id));
+      }
+      const rowHtml = p =>
+        '<div class="row" data-goto="#/p/'+encodeURIComponent(p.id)+'">'+
+          '<div class="avatar">'+esc(initials(p.name))+'</div>'+
+          '<div class="who"><div class="name">'+esc(p.name)+'</div>'+
+          '<div class="meta">'+esc(classOf(p.grad_year))+(p.hometown?' · '+esc(p.hometown):'')+(p.commitment?' · '+esc(p.commitment):'')+'</div></div>'+
+          (session && p.id===session._pid ? '<span class="tag you">You</span>' : '')+
+          '<button class="star'+(favSet.has(p.id)?' on':'')+'" data-fav="'+esc(p.id)+'" title="Favorite">'+(favSet.has(p.id)?'★':'☆')+'</button>'+
+        '</div>';
       const draw = q => {
         q = (q||'').trim().toLowerCase();
         if (!players.length) {
@@ -231,17 +251,28 @@
           document.getElementById('e-claim').onclick = () => go('#/login'); return;
         }
         const shown = players.filter(p => !q || ((p.name||'')+' '+(p.hometown||'')+' '+(p.commitment||'')).toLowerCase().includes(q));
-        list.innerHTML = shown.length ? shown.map(p =>
-          '<div class="row" data-goto="#/p/'+encodeURIComponent(p.id)+'">'+
-            '<div class="avatar">'+esc(initials(p.name))+'</div>'+
-            '<div class="who"><div class="name">'+esc(p.name)+'</div>'+
-            '<div class="meta">'+esc(classOf(p.grad_year))+(p.hometown?' · '+esc(p.hometown):'')+(p.commitment?' · '+esc(p.commitment):'')+'</div></div>'+
-            (session && p.id===session._pid ? '<span class="tag you">You</span>' : '')+
-          '</div>').join('') : '<div class="empty">No players match your search.</div>';
+        if (!shown.length) { list.innerHTML = '<div class="empty">No players match your search.</div>'; return; }
+        const favs = shown.filter(p => favSet.has(p.id));
+        const rest = shown.filter(p => !favSet.has(p.id));
+        if (session && favs.length) {
+          list.innerHTML = '<div class="section-head">★ Your favorites</div>'+favs.map(rowHtml).join('')+
+                           '<div class="section-head">All players</div>'+rest.map(rowHtml).join('');
+        } else {
+          list.innerHTML = shown.map(rowHtml).join('');
+        }
       };
       draw('');
       const s = document.getElementById('search');
       s.addEventListener('input', () => draw(s.value));
+    }
+    async function toggleFav(id, btn) {
+      if (!session) { go('#/login'); return; }
+      const uid = session.user.id;
+      const now = !favSet.has(id);
+      if (now) favSet.add(id); else favSet.delete(id);
+      if (btn) { btn.classList.toggle('on', now); btn.textContent = now ? '★' : '☆'; }
+      if (now) await sb.from('favorites').insert({ user_id: uid, profile_id: id });
+      else await sb.from('favorites').delete().eq('user_id', uid).eq('profile_id', id);
     }
 
     // ---------- Public profile ----------
@@ -587,7 +618,9 @@
       const adel = e.target.closest('[data-adel]');
       const appr = e.target.closest('[data-approve]');
       const rej  = e.target.closest('[data-reject]');
+      const fav  = e.target.closest('[data-fav]');
       const goEl = e.target.closest('[data-goto]');
+      if (fav)  { toggleFav(fav.getAttribute('data-fav'), fav); return; }
       if (pick) { claim.profileId = pick.getAttribute('data-pick'); claim.name = pick.getAttribute('data-name'); claim.stage='enter'; renderClaim(); return; }
       if (del)  { removeEvent(del.getAttribute('data-del')); return; }
       if (adel) { adminDelete(adel.getAttribute('data-adel'), adel.getAttribute('data-aname')); return; }
