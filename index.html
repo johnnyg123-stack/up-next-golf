@@ -187,8 +187,8 @@
         if (isAdmin) document.getElementById('nav-admin').onclick = () => go('#/admin');
         document.getElementById('nav-out').onclick = async () => { await sb.auth.signOut(); isAdmin=false; go('#/'); };
       } else {
-        nav.innerHTML = '<button class="btn sm primary" id="nav-claim">Claim your profile</button><button class="btn sm ghost" id="nav-in">Sign in</button>';
-        document.getElementById('nav-claim').onclick = () => go('#/claim');
+        nav.innerHTML = '<button class="btn sm primary" id="nav-signup">Create your profile</button><button class="btn sm ghost" id="nav-in">Sign in</button>';
+        document.getElementById('nav-signup').onclick = () => go('#/login');
         document.getElementById('nav-in').onclick = () => go('#/login');
       }
     }
@@ -209,26 +209,26 @@
     async function renderDirectory() {
       view.innerHTML =
         '<h1 class="page-title">Player directory</h1>'+
-        '<p class="intro">Junior golfers who have claimed and built their own profile.</p>'+
-        (session ? '' : '<div class="hero-cta"><button class="btn primary" id="cta-claim">Claim your profile</button><button class="btn" id="cta-in">Sign in</button></div>')+
+        '<p class="intro">Junior golfers who have created their own profile.</p>'+
+        (session ? '' : '<div class="hero-cta"><button class="btn primary" id="cta-claim">Create your profile</button><button class="btn" id="cta-in">Sign in</button></div>')+
         '<input class="search" id="search" type="text" placeholder="Search by name, hometown, or commitment…" autocomplete="off" />'+
         '<div class="list" id="list"><div class="spinner">Loading players…</div></div>';
       if (!session) {
-        document.getElementById('cta-claim').onclick = () => go('#/claim');
+        document.getElementById('cta-claim').onclick = () => go('#/login');
         document.getElementById('cta-in').onclick = () => go('#/login');
       }
       const { data, error } = await sb.from('profiles')
         .select('id,name,hometown,grad_year,commitment')
-        .not('claimed_by','is',null).order('name',{ascending:true});
+        .eq('status','approved').not('claimed_by','is',null).order('name',{ascending:true});
       const list = document.getElementById('list');
       if (error) { list.innerHTML = errorBox(error); return; }
       const players = data || [];
       const draw = q => {
         q = (q||'').trim().toLowerCase();
         if (!players.length) {
-          list.innerHTML = '<div class="empty">No players yet.<br>Are you a listed golfer? '+
-            '<button class="btn primary" id="e-claim">Claim your profile</button></div>';
-          document.getElementById('e-claim').onclick = () => go('#/claim'); return;
+          list.innerHTML = '<div class="empty">No players yet.<br>Are you a junior golfer? '+
+            '<button class="btn primary" id="e-claim">Create your profile</button></div>';
+          document.getElementById('e-claim').onclick = () => go('#/login'); return;
         }
         const shown = players.filter(p => !q || ((p.name||'')+' '+(p.hometown||'')+' '+(p.commitment||'')).toLowerCase().includes(q));
         list.innerHTML = shown.length ? shown.map(p =>
@@ -389,11 +389,11 @@
       }
       view.innerHTML =
         '<div class="auth-card"><h1>Sign in</h1>'+
-        '<p class="sub">Enter your email and we’ll send a verification code — no password needed.</p>'+
+        '<p class="sub">New or returning — enter your email and we’ll send a code. No password needed.</p>'+
         '<div class="field"><label>Email</label><input id="l-email" type="email" placeholder="you@email.com" autocomplete="email" /></div>'+
         '<div class="msg err" id="l-msg" style="margin-bottom:12px;"></div>'+
         '<button class="btn primary" id="l-send">Send code</button>'+
-        '<div class="auth-toggle" style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">Haven’t claimed yet? <button class="link" id="l-claim" style="display:inline;color:var(--accent);">Claim your profile</button></div></div>';
+        '<div class="auth-toggle" style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">Have a claim code from an organizer? <button class="link" id="l-claim" style="display:inline;color:var(--accent);">Claim a listed profile</button></div></div>';
       document.getElementById('l-claim').onclick = () => go('#/claim');
       document.getElementById('l-send').onclick = sendLoginCode;
       document.getElementById('l-email').focus();
@@ -426,22 +426,20 @@
       const uid = session.user.id;
       const { data:p, error } = await sb.from('profiles').select('*, tournaments(*)').eq('claimed_by', uid).maybeSingle();
       if (error) { view.innerHTML = errorBox(error); return; }
-      if (!p) {
-        view.innerHTML = '<h1 class="page-title">No profile yet</h1>'+
-          '<div class="notice">You’re signed in, but you haven’t claimed a golfer profile yet.'+
-          '<div style="margin-top:12px;"><button class="btn primary" id="np-claim">Claim your profile</button>'+
-          (isAdmin?' <button class="btn" id="np-admin">Go to Admin</button>':'')+'</div></div>';
-        document.getElementById('np-claim').onclick = () => go('#/claim');
-        if (isAdmin) document.getElementById('np-admin').onclick = () => go('#/admin');
-        return;
-      }
-      session._pid = p.id;
-      const g = (k) => esc(p[k]!=null ? p[k] : '');
-      const sched = (p.tournaments||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      const exists = !!p;
+      if (exists) session._pid = p.id;
+      const g = (k) => esc(exists && p[k]!=null ? p[k] : '');
+      const sched = exists ? (p.tournaments||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')) : [];
+      let banner;
+      if (!exists) banner = '<div class="notice">Fill out your profile below. When you submit it, the organizer reviews it before it appears in the public directory.</div>';
+      else if (p.status==='approved') banner = '<div class="notice" style="border-color:var(--accent-dim);color:var(--accent);">✓ Approved — your profile is live in the directory.</div>';
+      else if (p.status==='rejected') banner = '<div class="notice warn">This profile wasn’t approved. Reach out to your organizer if you think that’s a mistake.</div>';
+      else banner = '<div class="notice warn">⏳ Pending review — your profile isn’t public yet. The organizer will approve it soon. You can keep editing in the meantime.</div>';
       view.innerHTML =
         '<button class="link back" data-goto="#/">← Back to directory</button>'+
-        '<h1 class="page-title">Edit your profile</h1>'+
-        '<p class="intro">Signed in as '+esc(session.user.email)+'. Only you can edit this.</p>'+
+        '<h1 class="page-title">'+(exists?'Your profile':'Create your profile')+'</h1>'+
+        '<p class="intro">Signed in as '+esc(session.user.email)+'.</p>'+
+        banner+
         '<div class="card"><h2>Your details</h2><div class="field-grid">'+
           '<div class="field"><label>Name <span class="req">*</span></label><input id="f-name" type="text" value="'+g('name')+'" /></div>'+
           '<div class="field"><label>Hometown</label><input id="f-hometown" type="text" value="'+g('hometown')+'" placeholder="City, ST" /></div>'+
@@ -449,23 +447,23 @@
           '<div class="field"><label>College commitment</label><input id="f-commit" type="text" value="'+g('commitment')+'" placeholder="School, or Uncommitted" /></div>'+
           '<div class="field"><label>Height</label><input id="f-height" type="text" value="'+g('height')+'" placeholder="e.g. 5&#39;11&quot;" /></div>'+
           '<div class="field"><label>Weight</label><input id="f-weight" type="text" value="'+g('weight')+'" placeholder="e.g. 160 lbs" /></div>'+
-        '</div><div class="form-actions"><span class="msg ok" id="saveMsg"></span><button class="btn primary" id="saveProfile">Save details</button></div></div>'+
-        '<div class="card"><h2>Tournament schedule</h2><div class="sched">'+scheduleHtml(sched,true)+'</div>'+
+        '</div><div class="form-actions"><span class="msg ok" id="saveMsg"></span><button class="btn primary" id="saveProfile">'+(exists?'Save details':'Create profile')+'</button></div></div>'+
+        (exists ? ('<div class="card"><h2>Tournament schedule</h2><div class="sched">'+scheduleHtml(sched,true)+'</div>'+
           '<div style="margin-top:18px;border-top:1px solid var(--line-soft);padding-top:16px;"><div class="add-form">'+
             '<div class="field"><label>Date</label><input id="t-date" type="date" /></div>'+
             '<div class="field"><label>Tournament</label><input id="t-name" type="text" placeholder="e.g. AJGA Junior Open" /></div>'+
             '<div class="field wide"><label>Location</label><input id="t-location" type="text" placeholder="Course, City, State" /></div>'+
             '<div class="field wide"><label>Result (optional)</label><input id="t-result" type="text" placeholder="e.g. T-4 / 71-69" /></div>'+
-          '</div><div class="msg err" id="addMsg"></div><div class="form-actions"><button class="btn primary" id="addEvent">Add tournament</button></div></div></div>';
-      document.getElementById('saveProfile').onclick = () => saveProfile(p.id);
-      document.getElementById('addEvent').onclick = () => addEvent(p.id);
+          '</div><div class="msg err" id="addMsg"></div><div class="form-actions"><button class="btn primary" id="addEvent">Add tournament</button></div></div></div>') : '');
+      document.getElementById('saveProfile').onclick = () => saveProfile(exists ? p.id : null);
+      const _add = document.getElementById('addEvent'); if (_add) _add.onclick = () => addEvent(p.id);
     }
     async function saveProfile(pid) {
       const name = document.getElementById('f-name').value.trim();
       const msg = document.getElementById('saveMsg'), btn = document.getElementById('saveProfile');
       if (!name) { msg.className='msg err'; msg.textContent='Name is required.'; return; }
       const gradRaw = document.getElementById('f-grad').value;
-      const patch = {
+      const fields = {
         name,
         hometown: document.getElementById('f-hometown').value.trim() || null,
         grad_year: gradRaw ? parseInt(gradRaw,10) : null,
@@ -474,9 +472,11 @@
         weight: document.getElementById('f-weight').value.trim() || null,
         updated_at: new Date().toISOString()
       };
-      btn.disabled=true; btn.textContent='Saving…';
-      const { error } = await sb.from('profiles').update(patch).eq('id', pid);
-      btn.disabled=false; btn.textContent='Save details';
+      btn.disabled=true; btn.textContent = pid ? 'Saving…' : 'Creating…';
+      let error;
+      if (pid) { ({ error } = await sb.from('profiles').update(fields).eq('id', pid)); }
+      else { fields.claimed_by = session.user.id; ({ error } = await sb.from('profiles').insert(fields)); }
+      btn.disabled=false; btn.textContent = pid ? 'Save details' : 'Create profile';
       if (error) { msg.className='msg err'; msg.textContent=error.message; return; }
       renderMe();
     }
@@ -500,17 +500,44 @@
       if (!isAdmin) { view.innerHTML = '<div class="notice warn">You’re not an admin on this account.</div>'; return; }
       view.innerHTML =
         '<button class="link back" data-goto="#/">← Back to directory</button>'+
-        '<h1 class="page-title">Admin · roster</h1>'+
-        '<p class="intro">Add a golfer, then give them their claim code privately. They claim by searching their name + entering the code + verifying their email.</p>'+
-        '<div class="card"><h2>Add a golfer</h2><div class="field-grid">'+
+        '<h1 class="page-title">Admin</h1>'+
+        '<div class="card"><h2>Pending approval</h2><p class="intro" style="margin-top:0;">Golfers who signed up and are waiting to be approved into the public directory.</p><div id="a-pending"><div class="spinner">Loading…</div></div></div>'+
+        '<div class="card"><h2>Add a golfer (partner roster)</h2><p class="intro" style="margin-top:0;">Optional: pre-add a golfer you’re authorized to list and give them a private claim code.</p><div class="field-grid">'+
           '<div class="field"><label>Name <span class="req">*</span></label><input id="a-name" type="text" placeholder="First Last" /></div>'+
           '<div class="field"><label>Graduating year</label><input id="a-grad" type="number" min="2024" max="2035" placeholder="e.g. 2027" /></div>'+
         '</div><div class="msg err" id="a-msg"></div>'+
         '<div class="form-actions"><button class="btn primary" id="a-add">Add golfer</button></div>'+
         '<div id="a-newcode"></div></div>'+
-        '<div class="card"><h2>Roster</h2><div id="a-list"><div class="spinner">Loading…</div></div></div>';
+        '<div class="card"><h2>All golfers</h2><div id="a-list"><div class="spinner">Loading…</div></div></div>';
       document.getElementById('a-add').onclick = adminAdd;
+      loadPending();
       loadRoster();
+    }
+    async function loadPending() {
+      const box = document.getElementById('a-pending');
+      const { data, error } = await sb.from('profiles')
+        .select('id,name,grad_year,hometown,commitment')
+        .eq('status','pending').not('claimed_by','is',null).order('created_at',{ascending:true});
+      if (error) { box.innerHTML = errorBox(error); return; }
+      if (!data || !data.length) { box.innerHTML = '<div class="empty" style="padding:20px;">Nothing waiting — all caught up. 🎉</div>'; return; }
+      box.innerHTML = data.map(p =>
+        '<div class="event" style="margin-bottom:10px;">'+
+          '<div class="body"><div class="t-name">'+esc(p.name)+'</div>'+
+          '<div class="t-loc">'+esc(classOf(p.grad_year))+(p.hometown?' · '+esc(p.hometown):'')+(p.commitment?' · '+esc(p.commitment):'')+'</div></div>'+
+          '<div style="display:flex;gap:8px;flex:none;"><button class="btn primary sm" data-approve="'+esc(p.id)+'">Approve</button>'+
+          '<button class="btn danger sm" data-reject="'+esc(p.id)+'" data-rname="'+esc(p.name)+'">Reject</button></div>'+
+        '</div>').join('');
+    }
+    async function approveProfile(id) {
+      const { error } = await sb.from('profiles').update({ status:'approved' }).eq('id', id);
+      if (error) { alert(error.message); return; }
+      loadPending(); loadRoster();
+    }
+    async function rejectProfile(id, name) {
+      if (!confirm('Reject and remove '+name+'’s profile? They can sign up again later.')) return;
+      const { error } = await sb.from('profiles').delete().eq('id', id);
+      if (error) { alert(error.message); return; }
+      loadPending(); loadRoster();
     }
     async function adminAdd() {
       const name = document.getElementById('a-name').value.trim();
@@ -558,10 +585,14 @@
       const pick = e.target.closest('[data-pick]');
       const del  = e.target.closest('[data-del]');
       const adel = e.target.closest('[data-adel]');
+      const appr = e.target.closest('[data-approve]');
+      const rej  = e.target.closest('[data-reject]');
       const goEl = e.target.closest('[data-goto]');
       if (pick) { claim.profileId = pick.getAttribute('data-pick'); claim.name = pick.getAttribute('data-name'); claim.stage='enter'; renderClaim(); return; }
       if (del)  { removeEvent(del.getAttribute('data-del')); return; }
       if (adel) { adminDelete(adel.getAttribute('data-adel'), adel.getAttribute('data-aname')); return; }
+      if (appr) { approveProfile(appr.getAttribute('data-approve')); return; }
+      if (rej)  { rejectProfile(rej.getAttribute('data-reject'), rej.getAttribute('data-rname')); return; }
       if (goEl) { go(goEl.getAttribute('data-goto')); return; }
     });
     document.getElementById('brand').onclick = () => go('#/');
