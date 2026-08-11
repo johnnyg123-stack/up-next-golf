@@ -24,6 +24,21 @@
   .brand { font-size:13px; letter-spacing:.32em; text-transform:uppercase; color:var(--muted); cursor:pointer; }
   .brand b { color:var(--accent); font-weight:600; }
   #nav { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  .header-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  .dropdown { position:relative; }
+  .dropdown-menu { position:absolute; top:calc(100% + 6px); right:0; background:var(--bg-card); border:1px solid var(--line);
+    border-radius:12px; padding:6px; min-width:230px; display:none; z-index:40; box-shadow:0 12px 34px rgba(0,0,0,.45); }
+  .dropdown.open .dropdown-menu { display:block; }
+  .drop-item { display:flex; flex-direction:column; gap:2px; padding:9px 12px; border-radius:8px; cursor:pointer; text-decoration:none; }
+  .drop-item:hover { background:var(--bg-soft); }
+  .di-title { font-size:14px; color:var(--fg); font-weight:500; }
+  .di-soon { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); }
+  .soon-wrap { text-align:center; padding:52px 20px; }
+  .soon-badge { display:inline-block; font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:var(--gold);
+    border:1px solid #4a4020; background:rgba(252,211,77,.06); padding:5px 12px; border-radius:20px; margin-bottom:16px; }
+  .soon-title { font-size:30px; font-weight:600; margin-bottom:10px; }
+  .soon-desc { color:var(--muted); font-size:15px; max-width:52ch; margin:0 auto 10px; }
+  .soon-note { color:var(--faint); font-size:13px; max-width:48ch; margin:0 auto 22px; }
 
   h1.page-title { font-size:24px; font-weight:600; margin-bottom:4px; }
   .subtle { color:var(--muted); font-size:14px; }
@@ -148,7 +163,17 @@
   <div class="wrap">
     <header class="top">
       <div class="brand" id="brand">Up Next <b>Golf</b></div>
-      <div id="nav"></div>
+      <div class="header-right">
+        <div class="dropdown" id="explore">
+          <button class="btn sm ghost" id="explore-btn">Explore ▾</button>
+          <div class="dropdown-menu">
+            <a class="drop-item" data-goto="#/soon/rankings"><span class="di-title">Rankings</span><span class="di-soon">Coming soon</span></a>
+            <a class="drop-item" data-goto="#/soon/commitments"><span class="di-title">College Commitments</span><span class="di-soon">Coming soon</span></a>
+            <a class="drop-item" data-goto="#/soon/leaderboards"><span class="di-title">Live Leaderboards</span><span class="di-soon">Coming soon</span></a>
+          </div>
+        </div>
+        <div id="nav"></div>
+      </div>
     </header>
     <main id="view"><div class="spinner">Loading…</div></main>
   </div>
@@ -205,6 +230,7 @@
       updateNav();
       const hash = location.hash || '#/';
       if (hash.startsWith('#/p/')) return renderPublicProfile(decodeURIComponent(hash.slice(4)));
+      if (hash.startsWith('#/soon/')) return renderSoon(hash.slice(7));
       if (hash === '#/create') return renderCreate();
       if (hash === '#/claim')  return renderClaim();
       if (hash === '#/login')  return session ? go('#/me') : renderLogin();
@@ -310,6 +336,25 @@
           (ev.result?'<div class="t-result">Result: '+esc(ev.result)+'</div>':'')+'</div>'+
           (owner?'<button class="btn danger sm" data-del="'+esc(ev.id)+'">Remove</button>':'')+'</div>';
       }).join('');
+    }
+
+    // ---------- Coming soon (roadmap previews) ----------
+    function renderSoon(key) {
+      const map = {
+        rankings:    { title:'Rankings',            desc:'National and regional rankings for junior golfers — so players, coaches, and fans can see where everyone stands.' },
+        commitments: { title:'College Commitments', desc:'A live feed of who’s committing where — celebrate and track college commitments across the junior golf world.' },
+        leaderboards:{ title:'Live Leaderboards',   desc:'Follow tournaments in real time with live scoring and leaderboards, right inside Up Next Golf.' }
+      };
+      const f = map[key] || { title:'Coming soon', desc:'' };
+      view.innerHTML =
+        '<button class="link back" data-goto="#/">← Back to directory</button>'+
+        '<div class="soon-wrap">'+
+          '<div class="soon-badge">Coming soon</div>'+
+          '<h1 class="soon-title">'+esc(f.title)+'</h1>'+
+          '<p class="soon-desc">'+esc(f.desc)+'</p>'+
+          '<p class="soon-note">This is part of what’s ahead for Up Next Golf. Create your profile now so you’re ready when it launches.</p>'+
+          '<button class="btn primary" data-goto="#/create">Create your profile</button>'+
+        '</div>';
     }
 
     // ---------- Create profile (no login, submit for approval) ----------
@@ -680,6 +725,12 @@
       if (goEl) { go(goEl.getAttribute('data-goto')); return; }
     });
     document.getElementById('brand').onclick = () => go('#/');
+    (function bindExplore(){
+      const dd = document.getElementById('explore');
+      const btn = document.getElementById('explore-btn');
+      if (btn) btn.onclick = e => { e.stopPropagation(); dd.classList.toggle('open'); };
+      document.addEventListener('click', () => { if (dd) dd.classList.remove('open'); });
+    })();
 
     // ---------- init ----------
     async function refreshAdmin() {
