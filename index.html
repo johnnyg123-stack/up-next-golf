@@ -276,7 +276,9 @@
           (session && p.id===session._pid ? '<span class="tag you">You</span>' : '')+
           '<button class="star'+(favSet.has(p.id)?' on':'')+'" data-fav="'+esc(p.id)+'" title="Favorite">'+(favSet.has(p.id)?'★':'☆')+'</button>'+
         '</div>';
-      const years = Array.from(new Set(players.map(p => p.grad_year).filter(Boolean))).sort((a,b)=>a-b);
+      const nowY = new Date().getFullYear();
+      const range = []; for (let y = nowY; y <= nowY + 9; y++) range.push(y);
+      const years = Array.from(new Set(range.concat(players.map(p => p.grad_year).filter(Boolean)))).sort((a,b)=>a-b);
       const gradSel = document.getElementById('f-grad');
       if (gradSel) gradSel.innerHTML = '<option value="">All grad years</option>'+years.map(y=>'<option value="'+y+'">Class of '+y+'</option>').join('');
       const draw = () => {
