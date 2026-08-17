@@ -62,6 +62,9 @@
   .avatar { width:44px; height:44px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
     background:linear-gradient(160deg,#1f2634,#242c3d); border:1px solid var(--line); color:var(--accent); font-weight:600; font-size:15px; }
   .avatar.lg { width:64px; height:64px; font-size:22px; }
+  .photo-pick { display:flex; flex-direction:column; align-items:center; gap:12px; margin:4px 0 20px; }
+  .photo-pick .avatar.lg { width:88px; height:88px; font-size:30px; }
+  .photo-btn { cursor:pointer; display:inline-flex; align-items:center; }
   .row .who { flex:1; min-width:0; }
   .row .name { font-size:16px; font-weight:500; }
   .row .meta { font-size:13px; color:var(--muted); margin-top:1px; }
@@ -197,6 +200,9 @@
     const parseDate = iso => { const [y,m,d]=iso.split('-').map(Number); return {y,m:m-1,d}; };
     const classOf = y => y ? ('Class of '+y) : 'Class TBD';
     const today = () => new Date().toISOString().slice(0,10);
+    const avatarHtml = (p, lg) => (p && p.avatar_url)
+      ? '<div class="avatar'+(lg?' lg':'')+'" style="background-image:url(\''+esc(p.avatar_url)+'\');background-size:cover;background-position:center;"></div>'
+      : '<div class="avatar'+(lg?' lg':'')+'">'+esc(initials(p ? p.name : ''))+'</div>';
 
     if (!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
           !/PASTE_/.test(window.SUPABASE_URL) && !/PASTE_/.test(window.SUPABASE_ANON_KEY))) {
@@ -211,6 +217,7 @@
     // claim flow state
     let claim = { stage:'search', profileId:null, name:'', code:'', email:'' };
     let favSet = new Set();
+    let createFile = null;
 
     function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
@@ -258,7 +265,7 @@
         document.getElementById('cta-in').onclick = () => go('#/login');
       }
       const { data, error } = await sb.from('profiles')
-        .select('id,name,hometown,grad_year,commitment')
+        .select('id,name,hometown,grad_year,commitment,avatar_url')
         .eq('status','approved').order('name',{ascending:true});
       const list = document.getElementById('list');
       if (error) { list.innerHTML = errorBox(error); return; }
@@ -270,7 +277,7 @@
       }
       const rowHtml = p =>
         '<div class="row" data-goto="#/p/'+encodeURIComponent(p.id)+'">'+
-          '<div class="avatar">'+esc(initials(p.name))+'</div>'+
+          avatarHtml(p)+
           '<div class="who"><div class="name">'+esc(p.name)+'</div>'+
           '<div class="meta">'+esc(classOf(p.grad_year))+(p.hometown?' · '+esc(p.hometown):'')+(p.commitment?' · '+esc(p.commitment):'')+'</div></div>'+
           (session && p.id===session._pid ? '<span class="tag you">You</span>' : '')+
@@ -325,7 +332,7 @@
       const sched = (p.tournaments||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       view.innerHTML =
         '<button class="link back" data-goto="#/">← Back to directory</button>'+
-        '<div class="profile-head"><div class="avatar lg">'+esc(initials(p.name))+'</div>'+
+        '<div class="profile-head">'+avatarHtml(p,true)+
           '<div style="flex:1;min-width:200px;"><h1>'+esc(p.name)+'</h1>'+
           '<div class="meta">'+esc(classOf(p.grad_year))+(p.hometown?' · '+esc(p.hometown):'')+'</div></div>'+
           (mine?'<button class="btn primary" data-goto="#/me">Edit my profile</button>':'')+'</div>'+
@@ -376,6 +383,8 @@
       view.innerHTML =
         '<div class="auth-card" style="max-width:540px;"><h1>Create your profile</h1>'+
         '<p class="sub">Fill this out and submit — no account needed. An organizer reviews it before it appears in the directory.</p>'+
+        '<div class="photo-pick"><div class="avatar lg" id="cf-preview">?</div>'+
+          '<label class="btn sm ghost photo-btn">Add a photo<input id="cf-photo" type="file" accept="image/*" hidden /></label></div>'+
         '<div class="field-grid">'+
           '<div class="field"><label>Name <span class="req">*</span></label><input id="cf-name" type="text" placeholder="First Last" /></div>'+
           '<div class="field"><label>Email <span class="req">*</span></label><input id="cf-email" type="email" placeholder="you@email.com" autocomplete="email" /></div>'+
@@ -390,6 +399,12 @@
         '<div style="font-size:12px;color:var(--muted);margin-top:12px;text-align:center;">Enter your own email so you can sign in later to update your schedule.</div>'+
         '</div>';
       document.getElementById('cf-submit').onclick = submitCreate;
+      createFile = null;
+      document.getElementById('cf-photo').addEventListener('change', e => {
+        const f = e.target.files[0]; createFile = f || null;
+        const pv = document.getElementById('cf-preview');
+        if (f) { pv.style.backgroundImage='url('+URL.createObjectURL(f)+')'; pv.style.backgroundSize='cover'; pv.style.backgroundPosition='center'; pv.textContent=''; }
+      });
     }
     async function submitCreate() {
       const name = document.getElementById('cf-name').value.trim();
@@ -400,13 +415,22 @@
       if (!name) { msg.textContent='Enter your name.'; return; }
       if (!email || email.indexOf('@')<1) { msg.textContent='Enter a valid email.'; return; }
       btn.disabled=true; btn.textContent='Submitting…';
+      let avatarUrl = null;
+      if (createFile) {
+        const ext = (createFile.name.split('.').pop()||'jpg').toLowerCase();
+        const path = 'pub/'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+ext;
+        const { error:upErr } = await sb.storage.from('avatars').upload(path, createFile, { contentType:createFile.type });
+        if (upErr) { msg.textContent='Photo upload failed: '+upErr.message; btn.disabled=false; btn.textContent='Submit for approval'; return; }
+        avatarUrl = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+      }
       const { data, error } = await sb.rpc('submit_profile', {
         p_name:name, p_email:email,
         p_hometown: document.getElementById('cf-hometown').value.trim() || null,
         p_grad_year: grad ? parseInt(grad,10) : null,
         p_commitment: document.getElementById('cf-commit').value.trim() || null,
         p_height: document.getElementById('cf-height').value.trim() || null,
-        p_weight: document.getElementById('cf-weight').value.trim() || null
+        p_weight: document.getElementById('cf-weight').value.trim() || null,
+        p_avatar_url: avatarUrl
       });
       btn.disabled=false; btn.textContent='Submit for approval';
       if (error) { msg.textContent = error.message; return; }
@@ -581,7 +605,11 @@
         '<h1 class="page-title">'+(exists?'Your profile':'Create your profile')+'</h1>'+
         '<p class="intro">Signed in as '+esc(session.user.email)+'.</p>'+
         banner+
-        '<div class="card"><h2>Your details</h2><div class="field-grid">'+
+        '<div class="card"><h2>Your details</h2>'+
+        (exists ? ('<div class="photo-pick" style="justify-content:flex-start;margin-bottom:16px;">'+
+          '<div class="avatar lg" id="me-preview"'+(p.avatar_url?' style="background-image:url(\''+esc(p.avatar_url)+'\');background-size:cover;background-position:center;"':'')+'>'+(p.avatar_url?'':esc(initials(p.name)))+'</div>'+
+          '<label class="btn sm ghost photo-btn">Change photo<input id="me-photo" type="file" accept="image/*" hidden /></label></div>') : '')+
+        '<div class="field-grid">'+
           '<div class="field"><label>Name <span class="req">*</span></label><input id="f-name" type="text" value="'+g('name')+'" /></div>'+
           '<div class="field"><label>Hometown</label><input id="f-hometown" type="text" value="'+g('hometown')+'" placeholder="City, ST" /></div>'+
           '<div class="field"><label>Graduating year</label><input id="f-grad" type="number" min="2024" max="2035" value="'+g('grad_year')+'" placeholder="e.g. 2027" /></div>'+
@@ -598,6 +626,18 @@
           '</div><div class="msg err" id="addMsg"></div><div class="form-actions"><button class="btn primary" id="addEvent">Add tournament</button></div></div></div>') : '');
       document.getElementById('saveProfile').onclick = () => saveProfile(exists ? p.id : null);
       const _add = document.getElementById('addEvent'); if (_add) _add.onclick = () => addEvent(p.id);
+      const mePhoto = document.getElementById('me-photo');
+      if (mePhoto) mePhoto.addEventListener('change', async e => {
+        const f = e.target.files[0]; if (!f) return;
+        const ext = (f.name.split('.').pop()||'jpg').toLowerCase();
+        const path = uid+'/'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+ext;
+        const { error:upErr } = await sb.storage.from('avatars').upload(path, f, { contentType:f.type });
+        if (upErr) { alert('Upload failed: '+upErr.message); return; }
+        const url = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+        const { error:updErr } = await sb.from('profiles').update({ avatar_url:url }).eq('id', p.id);
+        if (updErr) { alert(updErr.message); return; }
+        renderMe();
+      });
     }
     async function saveProfile(pid) {
       const name = document.getElementById('f-name').value.trim();
